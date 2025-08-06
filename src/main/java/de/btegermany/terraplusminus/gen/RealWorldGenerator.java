@@ -10,10 +10,7 @@ import net.buildtheearth.terraminusminus.substitutes.BlockState;
 import net.buildtheearth.terraminusminus.substitutes.BukkitBindings;
 import net.buildtheearth.terraminusminus.substitutes.ChunkPos;
 import org.apache.commons.lang3.tuple.ImmutablePair;
-import org.bukkit.HeightMap;
-import org.bukkit.Location;
-import org.bukkit.Material;
-import org.bukkit.World;
+import org.bukkit.*;
 import org.bukkit.block.Biome;
 import org.bukkit.block.Block;
 import org.bukkit.generator.BiomeProvider;
@@ -27,6 +24,7 @@ import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 import static java.lang.Math.min;
 import static net.buildtheearth.terraminusminus.substitutes.ChunkPos.blockToCube;
@@ -163,14 +161,23 @@ public class RealWorldGenerator extends ChunkGenerator {
 
         try {var cache = TerraChunkGenerator.getInstance().getCache();
             CompletableFuture<CachedChunkData> future = cache.getUnchecked(new ChunkPos(chunk.x, chunk.z));
+            if (!force && Terraplusminus.instance.getAsyncGenerator().isEnabled()) {
+                try {
+                    future.get(Terraplusminus.instance.getTpmConfig().getDirectlyTimeoutMillis(), TimeUnit.MILLISECONDS);
+                } catch (Exception e) {
+                    if (e instanceof TimeoutException) {
+                        gen.supply(future, chunk);
+                        return null;
+                    } else {
+                        Terraplusminus.instance.getComponentLogger().error("An exception while retriving cache at chunk {}",
+                                chunk,
+                                e);
+                        return null;
+                    }
+                }
 
-            if (!force && Terraplusminus.instance.getAsyncGenerator().isEnabled() && future.get(Terraplusminus.instance.getTpmConfig().getDirectlyTimeoutMillis(),
-                    TimeUnit.MILLISECONDS) == null) {
-                gen.supply(future, chunk);
-                return null;
-            } else {
-                return new ImmutablePair<>(future, chunk);
             }
+            return new ImmutablePair<>(future, chunk);
         } catch (Exception e) {
             if (e.getCause() instanceof InterruptedException) Thread.currentThread().interrupt();
             Terraplusminus.instance.getComponentLogger().error("Unrecoverable exception when getting chunk data future for chunk {}",
